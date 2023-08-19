@@ -1,0 +1,106 @@
+---
+title: "NYPD_Shooting_Incident"
+author: "John Schlangen"
+date: "2023-08-08"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## NYPD Shooting Incident
+
+```{r Libraries, include=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+
+The following project is conducted using a publicly available dataset with data regarding shooting incidents in New York City since 2006. The link below is where the .csv file can be found for this analysis.
+<https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD>
+
+
+```{r Import Data}
+df <- read_csv('https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD')
+```
+
+## Initial Data Cleaning
+
+After reviewing the data, the ideas that appear to be the most interesting to investigate further include incidents by borough, murders by borough, and the sex of the victim/perpetrator.
+
+With that understanding, we can remove unnecessary fields and begin our analysis. We will select 5 fields that we will use, remove any null values, and ensure that the OCCUR_DATE field is a date type.
+
+```{r Data cleaning}
+df <- df %>%
+  select(OCCUR_DATE, BORO, VIC_SEX, PERP_SEX, STATISTICAL_MURDER_FLAG) %>%
+  drop_na() %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+
+summary(df)
+```
+
+With our data now clean, we can begin to do some initial questioning and data analysis to get a feel for our data. Based on the summary, we can see that approximately 19.9% of the incidents have the value `TRUE` for the field `STATISTICAL_MURDER_FLAG`.
+
+Investigating further, we will look to see which boroughs have the most murders, and which boroughs have the highest % of female perpetrators.
+
+# Boroughs with the Most Murders
+```{r Boroughs - Murders}
+most_murders <- df %>%
+  group_by(BORO) %>%
+  summarize(murders = sum(STATISTICAL_MURDER_FLAG)) %>%
+  arrange(desc(murders))
+
+most_murders %>%
+  ggplot(aes(x = BORO, y = murders)) +
+  geom_bar(stat = "identity")
+```
+
+# Boroughs with the Highest Female Perpetrators %
+```{r Boroughs - Female}
+female <- df %>%
+  group_by(BORO) %>%
+  mutate(murders = STATISTICAL_MURDER_FLAG / sum(STATISTICAL_MURDER_FLAG)) %>%
+  filter(PERP_SEX == 'F') %>%
+  summarize(female_percent = sum(murders)) %>%
+  arrange(desc(female_percent))
+
+female %>%
+  ggplot(aes(x = BORO, y = female_percent)) +
+  geom_bar(stat = "identity")
+```
+
+# Linear Model
+```{r Model}
+model_df <- df %>%
+  group_by(BORO, PERP_SEX, VIC_SEX) %>%
+  mutate(murders_all = sum(STATISTICAL_MURDER_FLAG)) %>%
+  group_by(PERP_SEX) %>%
+  mutate(murders_perp = sum(STATISTICAL_MURDER_FLAG))
+
+model <- lm(murders_perp ~ murders_all, data = model_df)
+
+df %>%
+  mutate(pred = predict(model)) %>%
+  group_by(BORO, PERP_SEX, VIC_SEX) %>%
+  mutate(murders_all = sum(STATISTICAL_MURDER_FLAG)) %>%
+  ggplot(aes(x = murders_all, y = pred)) +
+  geom_point(aes(color = 'red')) +
+  geom_line(color = 'blue')
+
+```
+
+After the initial analysis, and looking at the first graph, we could see that Brooklyn had the highest number of murders based on the dataset. It was very interesting to see that, according to the second graph, Staten Island had the highest percentage of female perpetrators at just over 5% of the total murders for the borough.
+
+Based on these findings, I would want to learn more regarding the populations and demographics of the boroughs. It would be interesting to understand why there are more female murder perpetrators in Staten Island than there are in the other boroughs.
+
+## Bias
+
+I acknowledge the fact that there is bias everywhere, and it is especially important to mitigate bias whenever possible. In my analysis, I tried to reduce bias by calculating using ratios, and also by looking at female data for this project. Using ratios allowed me to factor population size into the equation, and using the female data allowed me to remove any personal bias/opinions as a male conducting this research.
+
+```{r Summary}
+sessionInfo
+
+```
